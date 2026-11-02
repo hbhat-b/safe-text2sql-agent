@@ -51,7 +51,9 @@ cp .env.example .env        # add your LLM key (Groq free tier works)
 docker compose up --build
 ```
 
-Open http://localhost:8000.
+Open http://localhost:3000 for the chat UI. The API (and the minimal single-file demo UI) stays on http://localhost:8000.
+
+The browser opens the WebSocket straight to the API, so port 8000 must be reachable from your machine. If you deploy somewhere other than localhost, change the `NEXT_PUBLIC_API_URL` build arg in `docker-compose.yml` and rebuild.
 
 ### Local
 
@@ -62,6 +64,19 @@ python scripts/download_db.py
 cp .env.example .env        # add your LLM key
 uvicorn app.main:app --reload
 ```
+
+### Web UI (Next.js)
+
+The chat UI lives in `web/` (Next.js, shadcn/ui + Tailwind CSS, Redux Toolkit, TanStack Query). With the API running on port 8000:
+
+```bash
+cd web
+npm install
+cp .env.example .env.local  # NEXT_PUBLIC_API_URL, defaults to http://localhost:8000
+npm run dev
+```
+
+Open http://localhost:3000. Each answer has a row of icons underneath to view the generated SQL, the guardrail checks for every attempt, and the result table (with CSV export).
 
 ## API
 
@@ -103,7 +118,10 @@ app/
   db.py          read-only SQLite access and schema extraction
   main.py        FastAPI REST + WebSocket endpoints
   config.py      settings from environment
-  static/        minimal demo UI
+  static/        minimal single-file demo UI served at /
+web/             Next.js chat UI
+  src/lib/       Redux chat slice, WebSocket stream + React Query hooks
+  src/components/  chat turns, action icons, SQL / guardrail / result panels (ui/ holds the shadcn primitives)
 tests/           pytest suite with fake LLM
 scripts/         Chinook download
 ```

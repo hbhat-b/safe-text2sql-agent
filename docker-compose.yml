@@ -6,4 +6,26 @@ services:
     env_file: .env
     environment:
       DB_PATH: data/chinook.sqlite
+    # Check often so `web` (which waits for a healthy API) starts within seconds, not after the 30s default.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+      args:
+        # Used by the browser (WebSocket), so it must be the API's address as seen from your machine.
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+        # Used by the Next server inside the compose network to proxy REST calls.
+        API_INTERNAL_URL: http://api:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
     restart: unless-stopped
