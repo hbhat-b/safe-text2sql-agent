@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Safe Text-to-SQL Agent</title>
+  <style>
+    :root { --bg:#0f1115; --panel:#171a21; --line:#2a2f3a; --text:#e6e8ee; --muted:#8b93a7; --accent:#6aa6ff; --ok:#4cc38a; --err:#ff6b6b; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 system-ui, -apple-system, sans-serif; }
+    main { max-width: 860px; margin: 0 auto; padding: 32px 16px; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    p.sub { color: var(--muted); margin: 0 0 24px; }
+    form { display:flex; gap:8px; }
+    input { flex:1; padding:12px 14px; border-radius:8px; border:1px solid var(--line); background:var(--panel); color:var(--text); font-size:15px; }
+    button { padding:12px 18px; border:0; border-radius:8px; background:var(--accent); color:#0b0d12; font-weight:600; cursor:pointer; }
+    button:disabled { opacity:.5; cursor:default; }
+    .examples { margin:10px 0 24px; display:flex; flex-wrap:wrap; gap:6px; }
+    .examples span { font-size:13px; color:var(--muted); border:1px solid var(--line); border-radius:999px; padding:4px 10px; cursor:pointer; }
+    .step { border:1px solid var(--line); background:var(--panel); border-radius:8px; padding:10px 14px; margin-bottom:8px; }
+    .step b { color: var(--accent); font-size:13px; text-transform:uppercase; letter-spacing:.04em; }
+    .step.error b { color: var(--err); }
+    .step.answer b { color: var(--ok); }
+    pre { margin:6px 0 0; white-space:pre-wrap; word-break:break-word; font:13px/1.45 ui-monospace, Menlo, monospace; color:#cfd6e6; }
+    table { border-collapse: collapse; margin-top:8px; font-size:13px; width:100%; display:block; overflow-x:auto; }
+    th, td { border:1px solid var(--line); padding:4px 8px; text-align:left; white-space:nowrap; }
+    th { color: var(--muted); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Safe Text-to-SQL Agent</h1>
+  <p class="sub">LangGraph agent over the Chinook music store database. Read-only, guardrailed, streamed over WebSocket.</p>
+  <form id="f">
+    <input id="q" placeholder="Ask a question about the music store data..." autocomplete="off">
+    <button id="go">Ask</button>
+  </form>
+  <div class="examples" id="ex">
+    <span>Top 5 artists by number of tracks</span>
+    <span>Which country has the most customers?</span>
+    <span>Total sales by year</span>
+    <span>Delete all customers</span>
+  </div>
+  <div id="out"></div>
+</main>
+<script>
+  const out = document.getElementById('out');
+  const input = document.getElementById('q');
+  const btn = document.getElementById('go');
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  let ws;
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  function card(cls, title, html) {
+    const d = document.createElement('div');
+    d.className = 'step ' + cls;
+    d.innerHTML = `<b>${esc(title)}</b>${html}`;
+    out.appendChild(d);
+  }
+
+  function renderTable(result) {
+    if (!result || !result.columns.length) return '';
+    const head = result.columns.map(c => `<th>${esc(c)}</th>`).join('');
+    const body = result.rows.slice(0, 20).map(r => `<tr>${r.map(v => `<td>${esc(v)}</td>`).join('')}</tr>`).join('');
+    return `<table><tr>${head}</tr>${body}</table>`;
+  }
+
+  function onMessage(ev) {
+    const msg = JSON.parse(ev.data);
+    if (msg.type === 'done') { btn.disabled = false; return; }
+    if (msg.type === 'error') { card('error', 'error', `<pre>${esc(msg.message)}</pre>`); btn.disabled = false; return; }
+    const { node, data } = msg;
+    if (node === 'load_schema') card('', 'schema loaded', '');
+    else if (node === 'generate_sql') card('', `generated sql (attempt ${data.attempts})`, `<pre>${esc(data.sql)}</pre>`);
+    else if (node === 'validate_sql') data.error ? card('error', 'guardrail', `<pre>${esc(data.error)}</pre>`) : card('', 'guardrail passed', `<pre>${esc(data.sql)}</pre>`);
+    else if (node === 'execute_sql') data.error ? card('error', 'database', `<pre>${esc(data.error)}</pre>`) : card('', `executed · ${data.result.rows.length} rows`, renderTable(data.result));
+    else if (node === 'answer' || node === 'give_up') card(node === 'answer' ? 'answer' : 'error', 'answer', `<pre>${esc(data.answer)}</pre>`);
+  }
+
+  function connect() {
+    return new Promise(resolve => {
+      if (ws && ws.readyState === 1) return resolve();
+      ws = new WebSocket(`${proto}://${location.host}/ws/query`);
+      ws.onmessage = onMessage;
+      ws.onopen = resolve;
+      ws.onclose = () => { btn.disabled = false; };
+    });
+  }
+
+  async function ask(question) {
+    if (!question.trim()) return;
+    out.innerHTML = '';
+    btn.disabled = true;
+    await connect();
+    ws.send(JSON.stringify({ question }));
+  }
+
+  document.getElementById('f').onsubmit = e => { e.preventDefault(); ask(input.value); };
+  document.getElementById('ex').onclick = e => { if (e.target.tagName === 'SPAN') { input.value = e.target.textContent; ask(input.value); } };
+</script>
+</body>
+</html>
