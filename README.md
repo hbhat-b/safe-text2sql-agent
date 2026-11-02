@@ -107,7 +107,7 @@ curl -X POST localhost:8000/query \
 pytest -q
 ```
 
-26 tests covering the guardrail (allowed and rejected queries, limit enforcement), the agent graph (happy path, retry after guardrail rejection, retry after DB error, give-up after max retries) and the API (REST, validation, WebSocket streaming). Tests use a fake LLM, so CI needs no API key.
+30 tests covering the guardrail (allowed and rejected queries, limit enforcement), the agent graph (happy path, retry after guardrail rejection, retry after DB error, give-up after max retries, declining refusals without retrying) and the API (REST, validation, WebSocket streaming). Tests use a fake LLM, so CI needs no API key.
 
 ## Project structure
 
